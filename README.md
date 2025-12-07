@@ -8,7 +8,15 @@ A collection of lightweight linters and checks for artifacts that don't fit trad
 
 ## Tools
 
-*Coming soon*
+### jsonl
+
+Validate JSON Lines (JSONL) files against a JSON Schema and emit SARIF results. Each failing line is reported with its line number.
+
+```
+lintkit jsonl --schema path/to/schema.json path/to/data.jsonl [more.jsonl]
+```
+
+Exits with a non-zero status when validation errors are present.
 
 ## License
 
