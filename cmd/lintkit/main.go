@@ -10,6 +10,7 @@ import (
 	"github.com/dkoosis/lintkit/pkg/dbsanity"
 	"github.com/dkoosis/lintkit/pkg/docsprawl"
 	"github.com/dkoosis/lintkit/pkg/sarif"
+	"github.com/dkoosis/lintkit/pkg/stale"
 	"github.com/dkoosis/lintkit/pkg/wikifmt"
 )
 
@@ -37,6 +38,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
+	case "stale":
+		if err := runStale(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -52,6 +58,7 @@ func usage() {
 	fmt.Fprintln(flag.CommandLine.Output(), "  docsprawl    Analyze markdown sprawl and emit SARIF")
 	fmt.Fprintln(flag.CommandLine.Output(), "  dbsanity     Check SQLite row counts against baseline")
 	fmt.Fprintln(flag.CommandLine.Output(), "  wikifmt      Check wiki-style markdown files")
+	fmt.Fprintln(flag.CommandLine.Output(), "  stale        Detect stale artifacts based on mtime rules")
 }
 
 func runDbSanity(args []string) error {
@@ -126,4 +133,45 @@ func runWikifmt(args []string) error {
 	}
 
 	return nil
+}
+
+func runStale(args []string) error {
+	fs := flag.NewFlagSet("stale", flag.ContinueOnError)
+	rulesFile := fs.String("rules", "", "Path to the staleness rules file")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if *rulesFile == "" {
+		return fmt.Errorf("--rules is required")
+	}
+
+	paths := fs.Args()
+	if len(paths) == 0 {
+		paths = []string{"."}
+	}
+
+	cfg, err := stale.LoadConfig(*rulesFile)
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
+	log := sarif.NewLog()
+	run := sarif.Run{
+		Tool: sarif.Tool{Driver: sarif.Driver{Name: "lintkit-stale"}},
+	}
+
+	for _, root := range paths {
+		results, err := stale.Evaluate(root, cfg)
+		if err != nil {
+			return err
+		}
+		run.Results = append(run.Results, results...)
+	}
+
+	log.Runs = append(log.Runs, run)
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(log)
 }
