@@ -8,7 +8,7 @@ A collection of lightweight linters and checks for artifacts that don't fit trad
 
 ## Tools
 
-*Coming soon*
+- **mdsanity**: Checks markdown hygiene across a repository, reporting orphaned files, misplaced root-level docs, and ephemeral content that should live in dedicated subtrees. Emits SARIF for easy consumption by CI and IDE integrations.
 
 ## License
 
