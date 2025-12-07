@@ -8,7 +8,9 @@ A collection of lightweight linters and checks for artifacts that don't fit trad
 
 ## Tools
 
-*Coming soon*
+### wikifmt
+
+`lintkit wikifmt ROOT...` recursively scans wiki-style Markdown files for frontmatter validity, broken wikilinks/Markdown links, and basic tag hygiene. Results are emitted as SARIF for easy consumption by editors or CI systems.
 
 ## License
 
