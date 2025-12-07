@@ -31,6 +31,12 @@ Baseline format:
 
 Tables present in the database but missing from the baseline are ignored. Tables missing from the database are treated as a 100% drop.
 
+- **wikifmt**: Recursively scans wiki-style Markdown files for frontmatter validity, broken wikilinks/Markdown links, and basic tag hygiene. Results are emitted as SARIF for easy consumption by editors or CI systems.
+
+```bash
+lintkit wikifmt ROOT...
+```
+
 ## License
 
 MIT
