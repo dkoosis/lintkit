@@ -10,6 +10,7 @@ import (
 	"github.com/dkoosis/lintkit/pkg/dbsanity"
 	"github.com/dkoosis/lintkit/pkg/docsprawl"
 	"github.com/dkoosis/lintkit/pkg/filesize"
+	"github.com/dkoosis/lintkit/pkg/nobackups"
 	"github.com/dkoosis/lintkit/pkg/nuglint"
 	"github.com/dkoosis/lintkit/pkg/sarif"
 	"github.com/dkoosis/lintkit/pkg/stale"
@@ -52,6 +53,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+	case "nobackups":
+		if err := runNoBackups(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -70,8 +76,8 @@ func usage() {
 	fmt.Fprintln(flag.CommandLine.Output(), "  stale        Detect stale artifacts based on mtime rules")
 	fmt.Fprintln(flag.CommandLine.Output(), "  nuglint      Lint ORCA knowledge nugget JSONL files")
 	fmt.Fprintln(flag.CommandLine.Output(), "  filesize     Check file sizes against budget rules")
+	fmt.Fprintln(flag.CommandLine.Output(), "  nobackups    Detect backup/temporary files")
 }
-
 func runDbSanity(args []string) error {
 	fs := flag.NewFlagSet("dbsanity", flag.ExitOnError)
 	baselinePath := fs.String("baseline", "", "Path to baseline JSON with expected table counts")
@@ -232,6 +238,22 @@ func runFilesize(args []string) error {
 
 	analyzer := filesize.NewAnalyzer(analyzerRules)
 	log, err := analyzer.Analyze(fs.Args())
+	if err != nil {
+		return err
+	}
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(log)
+}
+
+
+func runNoBackups(paths []string) error {
+	if len(paths) == 0 {
+		paths = []string{"."}
+	}
+
+	log, err := nobackups.Scan(paths)
 	if err != nil {
 		return err
 	}

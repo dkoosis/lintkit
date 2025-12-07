@@ -83,6 +83,12 @@ rules:
 
 Patterns use Go's filepath.Match semantics. When a file exceeds its configured limit, the linter emits a `filesize-budget` result identifying the file, actual size, and allowed maximum.
 
+- **nobackups**: Detects backup or temporary files that should not be committed to a repository. Findings are emitted in SARIF format with the `ruleId` set to `nobackups`.
+
+```bash
+lintkit nobackups [PATH...]
+```
+
 ## License
 
 MIT
