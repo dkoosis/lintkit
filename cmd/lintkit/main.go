@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"github.com/dkoosis/lintkit/pkg/dbsanity"
 	"github.com/dkoosis/lintkit/pkg/docsprawl"
 	"github.com/dkoosis/lintkit/pkg/filesize"
+	"github.com/dkoosis/lintkit/pkg/jsonl"
 	"github.com/dkoosis/lintkit/pkg/nobackups"
 	"github.com/dkoosis/lintkit/pkg/nuglint"
 	"github.com/dkoosis/lintkit/pkg/sarif"
@@ -58,6 +60,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+	case "jsonl":
+		if err := runJSONL(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -77,7 +84,9 @@ func usage() {
 	fmt.Fprintln(flag.CommandLine.Output(), "  nuglint      Lint ORCA knowledge nugget JSONL files")
 	fmt.Fprintln(flag.CommandLine.Output(), "  filesize     Check file sizes against budget rules")
 	fmt.Fprintln(flag.CommandLine.Output(), "  nobackups    Detect backup/temporary files")
+	fmt.Fprintln(flag.CommandLine.Output(), "  jsonl        Validate JSONL files against JSON Schema")
 }
+
 func runDbSanity(args []string) error {
 	fs := flag.NewFlagSet("dbsanity", flag.ExitOnError)
 	baselinePath := fs.String("baseline", "", "Path to baseline JSON with expected table counts")
@@ -247,7 +256,6 @@ func runFilesize(args []string) error {
 	return enc.Encode(log)
 }
 
-
 func runNoBackups(paths []string) error {
 	if len(paths) == 0 {
 		paths = []string{"."}
@@ -261,4 +269,53 @@ func runNoBackups(paths []string) error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(log)
+}
+
+func runJSONL(args []string) error {
+	fs := flag.NewFlagSet("jsonl", flag.ContinueOnError)
+	schemaPath := fs.String("schema", "", "path to JSON Schema file")
+	fs.SetOutput(os.Stderr)
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if *schemaPath == "" {
+		return errors.New("--schema is required")
+	}
+
+	files := fs.Args()
+	if len(files) == 0 {
+		return errors.New("at least one JSONL path is required")
+	}
+
+	validator, err := jsonl.NewValidator(*schemaPath)
+	if err != nil {
+		return err
+	}
+
+	log := sarif.NewLog()
+	run := sarif.Run{Tool: sarif.Tool{Driver: sarif.Driver{Name: "lintkit-jsonl"}}}
+
+	for _, path := range files {
+		results, err := jsonl.ValidateFile(path, validator)
+		if err != nil {
+			return err
+		}
+		run.Results = append(run.Results, results...)
+	}
+
+	log.Runs = append(log.Runs, run)
+
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(log); err != nil {
+		return err
+	}
+
+	if len(run.Results) > 0 {
+		return errors.New("validation errors detected")
+	}
+
+	return nil
 }

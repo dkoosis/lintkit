@@ -89,6 +89,12 @@ Patterns use Go's filepath.Match semantics. When a file exceeds its configured l
 lintkit nobackups [PATH...]
 ```
 
+- **jsonl**: Validate JSONL files against a JSON Schema. Emits SARIF findings.
+
+```bash
+lintkit jsonl --schema schema.json file.jsonl [file2.jsonl...]
+```
+
 ## License
 
 MIT
