@@ -8,16 +8,24 @@ import (
 	"os"
 
 	"github.com/dkoosis/lintkit/pkg/dbsanity"
+	"github.com/dkoosis/lintkit/pkg/docsprawl"
 	"github.com/dkoosis/lintkit/pkg/sarif"
 )
 
 func main() {
 	if len(os.Args) < 2 {
 		usage()
-		os.Exit(2)
+		os.Exit(1)
 	}
 
-	switch os.Args[1] {
+	subcommand := os.Args[1]
+	switch subcommand {
+	case "docsprawl":
+		fs := docsprawl.Command()
+		if err := docsprawl.RunCLI(fs, os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
 	case "dbsanity":
 		if err := runDbSanity(os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -26,13 +34,17 @@ func main() {
 	case "help", "-h", "--help":
 		usage()
 	default:
+		fmt.Fprintf(os.Stderr, "unknown command: %s\n", subcommand)
 		usage()
-		os.Exit(2)
+		os.Exit(1)
 	}
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "Usage: lintkit dbsanity --baseline counts.json [--threshold PCT] DB...\n")
+	fmt.Fprintln(flag.CommandLine.Output(), "Usage: lintkit <command> [options]")
+	fmt.Fprintln(flag.CommandLine.Output(), "Commands:")
+	fmt.Fprintln(flag.CommandLine.Output(), "  docsprawl    Analyze markdown sprawl and emit SARIF")
+	fmt.Fprintln(flag.CommandLine.Output(), "  dbsanity     Check SQLite row counts against baseline")
 }
 
 func runDbSanity(args []string) error {
