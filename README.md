@@ -57,6 +57,12 @@ Run against one or more paths (defaults to the current directory):
 lintkit stale --rules staleness.yml ./...
 ```
 
+- **nuglint**: Validate knowledge nuggets stored in `.orca/kg/*.jsonl` files. Outputs SARIF findings to stdout.
+
+```bash
+lintkit nuglint path/to/repo
+```
+
 ## License
 
 MIT

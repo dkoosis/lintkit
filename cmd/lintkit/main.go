@@ -9,6 +9,7 @@ import (
 
 	"github.com/dkoosis/lintkit/pkg/dbsanity"
 	"github.com/dkoosis/lintkit/pkg/docsprawl"
+	"github.com/dkoosis/lintkit/pkg/nuglint"
 	"github.com/dkoosis/lintkit/pkg/sarif"
 	"github.com/dkoosis/lintkit/pkg/stale"
 	"github.com/dkoosis/lintkit/pkg/wikifmt"
@@ -43,6 +44,8 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+	case "nuglint":
+		runNuglint(os.Args[2:])
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -59,6 +62,7 @@ func usage() {
 	fmt.Fprintln(flag.CommandLine.Output(), "  dbsanity     Check SQLite row counts against baseline")
 	fmt.Fprintln(flag.CommandLine.Output(), "  wikifmt      Check wiki-style markdown files")
 	fmt.Fprintln(flag.CommandLine.Output(), "  stale        Detect stale artifacts based on mtime rules")
+	fmt.Fprintln(flag.CommandLine.Output(), "  nuglint      Lint ORCA knowledge nugget JSONL files")
 }
 
 func runDbSanity(args []string) error {
@@ -174,4 +178,30 @@ func runStale(args []string) error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(log)
+}
+
+func runNuglint(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "nuglint requires at least one path")
+		os.Exit(1)
+	}
+
+	results, err := nuglint.Run(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	log := sarif.NewLog()
+	log.Runs = append(log.Runs, sarif.Run{
+		Tool:    sarif.Tool{Driver: sarif.Driver{Name: "lintkit-nuglint"}},
+		Results: results,
+	})
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(log); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to write SARIF: %v\n", err)
+		os.Exit(1)
+	}
 }
