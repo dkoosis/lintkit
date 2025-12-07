@@ -1,6 +1,11 @@
 // Package sarif provides types and helpers for emitting SARIF output.
 package sarif
 
+import (
+	"encoding/json"
+	"io"
+)
+
 // Version is the SARIF schema version.
 const Version = "2.1.0"
 
@@ -73,4 +78,21 @@ func NewLog() *Log {
 		Schema:  "https://json.schemastore.org/sarif-2.1.0.json",
 		Runs:    []Run{},
 	}
+}
+
+// Encoder wraps a JSON encoder with SARIF-friendly defaults.
+type Encoder struct {
+	enc *json.Encoder
+}
+
+// NewEncoder creates an indented JSON encoder for SARIF logs.
+func NewEncoder(w io.Writer) *Encoder {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return &Encoder{enc: enc}
+}
+
+// Encode writes the SARIF log.
+func (e *Encoder) Encode(log *Log) error {
+	return e.enc.Encode(log)
 }
