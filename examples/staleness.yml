@@ -1,0 +1,7 @@
+rules:
+  - derived: "go.sum"
+    source: "go.mod"
+  - derived: "*_gen.go"
+    source: "*.proto"
+  - derived: ".orca/views/*.jsonl"
+    source: ".orca/knowledge.db"
