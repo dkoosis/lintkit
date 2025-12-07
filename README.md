@@ -8,13 +8,94 @@ A collection of lightweight linters and checks for artifacts that don't fit trad
 
 ## Tools
 
-### dbschema
+- **docsprawl**: Analyze markdown sprawl and emit SARIF for documentation hygiene issues.
 
-Compare a SQLite database's schema against an expected DDL file and emit SARIF findings for missing/extra tables or columns.
+- **dbsanity**: Compare SQLite table row counts against a JSON baseline and emit SARIF when drift exceeds a threshold.
 
-Usage:
-
+```bash
+lintkit dbsanity --baseline counts.json --threshold 20 path/to/db.sqlite
 ```
+
+Baseline format:
+
+```json
+{
+  "tables": {
+    "nugs": 1000,
+    "tags": 2000
+  }
+}
+```
+
+Tables present in the database but missing from the baseline are ignored. Tables missing from the database are treated as a 100% drop.
+
+- **wikifmt**: Recursively scans wiki-style Markdown files for frontmatter validity, broken wikilinks/Markdown links, and basic tag hygiene. Results are emitted as SARIF for easy consumption by editors or CI systems.
+
+```bash
+lintkit wikifmt ROOT...
+```
+
+- **stale**: Detect derived artifacts that are older than their sources based on a YAML configuration file. Emits SARIF with `ruleId` of `stale-artifact` and a driver name of `lintkit-stale`.
+
+Example rules file:
+
+```yaml
+rules:
+  - derived: "go.sum"
+    source: "go.mod"
+  - derived: "*_gen.go"
+    source: "*.proto"
+  - derived: ".orca/views/*.jsonl"
+    source: ".orca/knowledge.db"
+```
+
+Run against one or more paths (defaults to the current directory):
+
+```bash
+lintkit stale --rules staleness.yml ./...
+```
+
+- **nuglint**: Validate knowledge nuggets stored in `.orca/kg/*.jsonl` files. Outputs SARIF findings to stdout.
+
+```bash
+lintkit nuglint path/to/repo
+```
+
+- **filesize**: Reports file metrics and enforces simple size budgets. Outputs SARIF only.
+
+```bash
+lintkit filesize --rules .filesize.yml [PATH...]
+```
+
+Example rules file:
+
+```yaml
+rules:
+  - pattern: "*.go"
+    max: 500        # lines
+  - pattern: "*.json"
+    max: 100KB      # bytes
+  - pattern: "go.sum"
+    max: 50KB       # bytes
+```
+
+Patterns use Go's filepath.Match semantics. When a file exceeds its configured limit, the linter emits a `filesize-budget` result identifying the file, actual size, and allowed maximum.
+
+- **nobackups**: Detects backup or temporary files that should not be committed to a repository. Findings are emitted in SARIF format with the `ruleId` set to `nobackups`.
+
+```bash
+lintkit nobackups [PATH...]
+```
+
+- **jsonl**: Validate JSONL files against a JSON Schema. Emits SARIF findings.
+
+```bash
+lintkit jsonl --schema schema.json file.jsonl [file2.jsonl...]
+```
+
+- **dbschema**: Compare a SQLite database's schema against an expected DDL file and emit SARIF findings for missing/extra tables or columns.
+
+```bash
 lintkit dbschema --expected schema.sql path/to/app.sqlite
 ```
 
