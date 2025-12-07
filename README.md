@@ -8,7 +8,15 @@ A collection of lightweight linters and checks for artifacts that don't fit trad
 
 ## Tools
 
-*Coming soon*
+### nuglint
+
+Validate knowledge nuggets stored in `.orca/kg/*.jsonl` files.
+
+```
+go run ./cmd/lintkit nuglint path/to/repo
+```
+
+Outputs SARIF findings to stdout.
 
 ## License
 
