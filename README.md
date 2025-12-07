@@ -8,8 +8,6 @@ A collection of lightweight linters and checks for artifacts that don't fit trad
 
 ## Tools
 
-- **mdsanity**: Checks markdown hygiene across a repository, reporting orphaned files, misplaced root-level docs, and ephemeral content that should live in dedicated subtrees. Emits SARIF for easy consumption by CI and IDE integrations.
-
 - **docsprawl**: Analyze markdown sprawl and emit SARIF for documentation hygiene issues.
 
 - **dbsanity**: Compare SQLite table row counts against a JSON baseline and emit SARIF when drift exceeds a threshold.
@@ -93,6 +91,12 @@ lintkit nobackups [PATH...]
 
 ```bash
 lintkit jsonl --schema schema.json file.jsonl [file2.jsonl...]
+```
+
+- **dbschema**: Compare a SQLite database's schema against an expected DDL file and emit SARIF findings for missing/extra tables or columns.
+
+```bash
+lintkit dbschema --expected schema.sql path/to/app.sqlite
 ```
 
 ## License
