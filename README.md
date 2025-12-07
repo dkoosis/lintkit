@@ -8,7 +8,15 @@ A collection of lightweight linters and checks for artifacts that don't fit trad
 
 ## Tools
 
-*Coming soon*
+### nobackups
+
+Detects backup or temporary files that should not be committed to a repository.
+
+```
+lintkit nobackups [PATH...]
+```
+
+When no paths are provided, the current directory is scanned. Findings are emitted in SARIF format with the `ruleId` set to `nobackups`.
 
 ## License
 
