@@ -9,6 +9,7 @@ import (
 
 	"github.com/dkoosis/lintkit/pkg/dbsanity"
 	"github.com/dkoosis/lintkit/pkg/docsprawl"
+	"github.com/dkoosis/lintkit/pkg/filesize"
 	"github.com/dkoosis/lintkit/pkg/nuglint"
 	"github.com/dkoosis/lintkit/pkg/sarif"
 	"github.com/dkoosis/lintkit/pkg/stale"
@@ -46,6 +47,11 @@ func main() {
 		}
 	case "nuglint":
 		runNuglint(os.Args[2:])
+	case "filesize":
+		if err := runFilesize(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -63,6 +69,7 @@ func usage() {
 	fmt.Fprintln(flag.CommandLine.Output(), "  wikifmt      Check wiki-style markdown files")
 	fmt.Fprintln(flag.CommandLine.Output(), "  stale        Detect stale artifacts based on mtime rules")
 	fmt.Fprintln(flag.CommandLine.Output(), "  nuglint      Lint ORCA knowledge nugget JSONL files")
+	fmt.Fprintln(flag.CommandLine.Output(), "  filesize     Check file sizes against budget rules")
 }
 
 func runDbSanity(args []string) error {
@@ -204,4 +211,32 @@ func runNuglint(args []string) {
 		fmt.Fprintf(os.Stderr, "failed to write SARIF: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func runFilesize(args []string) error {
+	fs := flag.NewFlagSet("filesize", flag.ContinueOnError)
+	rulesPath := fs.String("rules", "", "Path to YAML rules file")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if *rulesPath == "" {
+		return fmt.Errorf("--rules is required")
+	}
+
+	analyzerRules, err := filesize.LoadRules(*rulesPath)
+	if err != nil {
+		return err
+	}
+
+	analyzer := filesize.NewAnalyzer(analyzerRules)
+	log, err := analyzer.Analyze(fs.Args())
+	if err != nil {
+		return err
+	}
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(log)
 }

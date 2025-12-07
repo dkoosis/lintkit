@@ -63,6 +63,26 @@ lintkit stale --rules staleness.yml ./...
 lintkit nuglint path/to/repo
 ```
 
+- **filesize**: Reports file metrics and enforces simple size budgets. Outputs SARIF only.
+
+```bash
+lintkit filesize --rules .filesize.yml [PATH...]
+```
+
+Example rules file:
+
+```yaml
+rules:
+  - pattern: "*.go"
+    max: 500        # lines
+  - pattern: "*.json"
+    max: 100KB      # bytes
+  - pattern: "go.sum"
+    max: 50KB       # bytes
+```
+
+Patterns use Go's filepath.Match semantics. When a file exceeds its configured limit, the linter emits a `filesize-budget` result identifying the file, actual size, and allowed maximum.
+
 ## License
 
 MIT
