@@ -8,7 +8,15 @@ A collection of lightweight linters and checks for artifacts that don't fit trad
 
 ## Tools
 
-*Coming soon*
+### dbschema
+
+Compare a SQLite database's schema against an expected DDL file and emit SARIF findings for missing/extra tables or columns.
+
+Usage:
+
+```
+lintkit dbschema --expected schema.sql path/to/app.sqlite
+```
 
 ## License
 
