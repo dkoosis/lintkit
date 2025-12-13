@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/dkoosis/lintkit/pkg/dbsanity"
 	"github.com/dkoosis/lintkit/pkg/dbschema"
@@ -98,9 +99,15 @@ func runDbSanity(args []string) error {
 	fs := flag.NewFlagSet("dbsanity", flag.ExitOnError)
 	baselinePath := fs.String("baseline", "", "Path to baseline JSON with expected table counts")
 	threshold := fs.Float64("threshold", 20, "Percentage threshold for drift detection")
+	configPath := fs.String("config", "", "Path to YAML config for data checks")
+	historyPath := fs.String("history", "", "Path to history JSON file for WoW tracking")
+	updateHistory := fs.Bool("update", false, "Update history file with current results")
 
 	fs.Usage = func() {
-		fmt.Fprintf(fs.Output(), "Usage: lintkit dbsanity --baseline counts.json [--threshold PCT] DB...\n")
+		fmt.Fprintf(fs.Output(), "Usage: lintkit dbsanity [--baseline counts.json | --config checks.yaml] DB...\n")
+		fmt.Fprintf(fs.Output(), "\nModes:\n")
+		fmt.Fprintf(fs.Output(), "  Legacy:  --baseline counts.json [--threshold PCT]\n")
+		fmt.Fprintf(fs.Output(), "  Checks:  --config checks.yaml [--history history.json] [--update]\n")
 		fs.PrintDefaults()
 	}
 
@@ -108,15 +115,21 @@ func runDbSanity(args []string) error {
 		return err
 	}
 
-	if *baselinePath == "" {
-		fs.Usage()
-		return fmt.Errorf("baseline path is required")
-	}
-
 	dbPaths := fs.Args()
 	if len(dbPaths) == 0 {
 		fs.Usage()
 		return fmt.Errorf("at least one database path is required")
+	}
+
+	// Config-based mode
+	if *configPath != "" {
+		return runDbSanityChecks(dbPaths, *configPath, *historyPath, *updateHistory)
+	}
+
+	// Legacy baseline mode
+	if *baselinePath == "" {
+		fs.Usage()
+		return fmt.Errorf("either --baseline or --config is required")
 	}
 
 	baseline, err := dbsanity.LoadBaseline(*baselinePath)
@@ -146,6 +159,60 @@ func runDbSanity(args []string) error {
 	}
 
 	return nil
+}
+
+func runDbSanityChecks(dbPaths []string, configPath, historyPath string, updateHistory bool) error {
+	cfg, err := dbsanity.LoadConfig(configPath)
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
+	var history dbsanity.History
+	if historyPath != "" {
+		history, err = dbsanity.LoadHistory(historyPath)
+		if err != nil {
+			return fmt.Errorf("load history: %w", err)
+		}
+	}
+
+	now := time.Now()
+	currentWeek := dbsanity.ISOWeek(now)
+
+	var allResults []sarif.Result
+	allCheckResults := make(map[string]dbsanity.CheckResult)
+
+	for _, dbPath := range dbPaths {
+		checkResults, err := dbsanity.RunChecks(context.Background(), dbPath, cfg)
+		if err != nil {
+			return fmt.Errorf("checks on %s: %w", dbPath, err)
+		}
+
+		for k, v := range checkResults {
+			allCheckResults[k] = v
+		}
+
+		results := dbsanity.CompareWithHistory(dbPath, checkResults, &history, currentWeek)
+		allResults = append(allResults, results...)
+	}
+
+	// Update history if requested
+	if updateHistory && historyPath != "" {
+		snapshot := dbsanity.Snapshot{
+			Timestamp: now,
+			Week:      currentWeek,
+			Results:   allCheckResults,
+		}
+		history.AddSnapshot(snapshot)
+		if err := dbsanity.SaveHistory(historyPath, history); err != nil {
+			return fmt.Errorf("save history: %w", err)
+		}
+	}
+
+	log := dbsanity.BuildLog(allResults)
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(log)
 }
 
 func runWikifmt(args []string) error {

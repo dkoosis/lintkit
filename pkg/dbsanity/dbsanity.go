@@ -148,3 +148,216 @@ func BuildLog(results []sarif.Result) *sarif.Log {
 	log.Runs = append(log.Runs, run)
 	return log
 }
+
+// RunChecks executes all configured checks against the database.
+func RunChecks(ctx context.Context, dbPath string, cfg Config) (map[string]CheckResult, error) {
+	results := make(map[string]CheckResult)
+
+	for _, check := range cfg.Checks {
+		result, err := executeCheck(ctx, dbPath, check)
+		if err != nil {
+			return nil, fmt.Errorf("check %q failed: %w", check.Name, err)
+		}
+		results[check.Name] = result
+	}
+
+	return results, nil
+}
+
+func executeCheck(ctx context.Context, dbPath string, check Check) (CheckResult, error) {
+	switch check.Type {
+	case CheckTypeScalar:
+		return executeScalarCheck(ctx, dbPath, check.Query)
+	case CheckTypeBreakdown:
+		return executeBreakdownCheck(ctx, dbPath, check.Query)
+	default:
+		return CheckResult{}, fmt.Errorf("unknown check type: %s", check.Type)
+	}
+}
+
+func executeScalarCheck(ctx context.Context, dbPath, query string) (CheckResult, error) {
+	cmd := exec.CommandContext(ctx, "sqlite3", dbPath, query)
+	output, err := cmd.Output()
+	if err != nil {
+		return CheckResult{}, err
+	}
+
+	valStr := strings.TrimSpace(string(output))
+	if valStr == "" {
+		return CheckResult{Scalar: 0}, nil
+	}
+
+	val, err := strconv.ParseInt(valStr, 10, 64)
+	if err != nil {
+		return CheckResult{}, fmt.Errorf("parse scalar result: %w", err)
+	}
+
+	return CheckResult{Scalar: val}, nil
+}
+
+func executeBreakdownCheck(ctx context.Context, dbPath, query string) (CheckResult, error) {
+	cmd := exec.CommandContext(ctx, "sqlite3", dbPath, query)
+	output, err := cmd.Output()
+	if err != nil {
+		return CheckResult{}, err
+	}
+
+	breakdown := make(map[string]int64)
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Expected format: key|count
+		parts := strings.SplitN(line, "|", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := strings.TrimSpace(parts[0])
+		valStr := strings.TrimSpace(parts[1])
+
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			continue
+		}
+
+		breakdown[key] = val
+	}
+
+	return CheckResult{Breakdown: breakdown}, nil
+}
+
+// CompareWithHistory generates SARIF results comparing current results with history.
+func CompareWithHistory(dbPath string, current map[string]CheckResult, history *History, currentWeek string) []sarif.Result {
+	var results []sarif.Result
+
+	// Always emit informational results for current values
+	for name, result := range current {
+		results = append(results, buildInfoResult(dbPath, name, result))
+	}
+
+	// Compare with last week if available
+	lastWeek := history.LastWeekSnapshot(currentWeek)
+	if lastWeek == nil {
+		return results
+	}
+
+	for name, currentResult := range current {
+		prevResult, ok := lastWeek.Results[name]
+		if !ok {
+			continue
+		}
+
+		driftResults := compareSingleCheck(dbPath, name, currentResult, prevResult, lastWeek.Week)
+		results = append(results, driftResults...)
+	}
+
+	return results
+}
+
+func buildInfoResult(dbPath, checkName string, result CheckResult) sarif.Result {
+	var msg string
+	if result.Breakdown != nil {
+		parts := make([]string, 0, len(result.Breakdown))
+		for k, v := range result.Breakdown {
+			parts = append(parts, fmt.Sprintf("%s=%d", k, v))
+		}
+		msg = fmt.Sprintf("[%s] %s", checkName, strings.Join(parts, ", "))
+	} else {
+		msg = fmt.Sprintf("[%s] %d", checkName, result.Scalar)
+	}
+
+	return sarif.Result{
+		RuleID: "db-check-info",
+		Level:  "note",
+		Message: sarif.Message{
+			Text: msg,
+		},
+		Locations: []sarif.Location{
+			{
+				PhysicalLocation: sarif.PhysicalLocation{
+					ArtifactLocation: sarif.ArtifactLocation{URI: dbPath},
+				},
+			},
+		},
+	}
+}
+
+func compareSingleCheck(dbPath, checkName string, current, previous CheckResult, prevWeek string) []sarif.Result {
+	var results []sarif.Result
+
+	if current.Breakdown != nil && previous.Breakdown != nil {
+		for key, currVal := range current.Breakdown {
+			prevVal := previous.Breakdown[key]
+			if currVal != prevVal {
+				delta := currVal - prevVal
+				sign := "+"
+				if delta < 0 {
+					sign = ""
+				}
+				msg := fmt.Sprintf("[%s] %s: %d → %d (%s%d since %s)", checkName, key, prevVal, currVal, sign, delta, prevWeek)
+				results = append(results, sarif.Result{
+					RuleID: "db-check-drift",
+					Level:  "warning",
+					Message: sarif.Message{
+						Text: msg,
+					},
+					Locations: []sarif.Location{
+						{
+							PhysicalLocation: sarif.PhysicalLocation{
+								ArtifactLocation: sarif.ArtifactLocation{URI: dbPath},
+							},
+						},
+					},
+				})
+			}
+		}
+
+		// Check for keys that existed before but don't now
+		for key, prevVal := range previous.Breakdown {
+			if _, ok := current.Breakdown[key]; !ok {
+				msg := fmt.Sprintf("[%s] %s: %d → 0 (removed since %s)", checkName, key, prevVal, prevWeek)
+				results = append(results, sarif.Result{
+					RuleID: "db-check-drift",
+					Level:  "warning",
+					Message: sarif.Message{
+						Text: msg,
+					},
+					Locations: []sarif.Location{
+						{
+							PhysicalLocation: sarif.PhysicalLocation{
+								ArtifactLocation: sarif.ArtifactLocation{URI: dbPath},
+							},
+						},
+					},
+				})
+			}
+		}
+	} else if current.Scalar != previous.Scalar {
+		delta := current.Scalar - previous.Scalar
+		sign := "+"
+		if delta < 0 {
+			sign = ""
+		}
+		msg := fmt.Sprintf("[%s] %d → %d (%s%d since %s)", checkName, previous.Scalar, current.Scalar, sign, delta, prevWeek)
+		results = append(results, sarif.Result{
+			RuleID: "db-check-drift",
+			Level:  "warning",
+			Message: sarif.Message{
+				Text: msg,
+			},
+			Locations: []sarif.Location{
+				{
+					PhysicalLocation: sarif.PhysicalLocation{
+						ArtifactLocation: sarif.ArtifactLocation{URI: dbPath},
+					},
+				},
+			},
+		})
+	}
+
+	return results
+}

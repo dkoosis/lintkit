@@ -67,7 +67,7 @@ func (s *scanner) walk(root string) error {
 		if s.isBackup(d.Name()) {
 			s.results = append(s.results, sarif.Result{
 				RuleID: "nobackups",
-				Level:  "error",
+				Level:  "warning",
 				Message: sarif.Message{
 					Text: fmt.Sprintf("Backup/temporary file should not be committed: %s", path),
 				},
