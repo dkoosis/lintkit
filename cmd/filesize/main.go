@@ -3,6 +3,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -13,11 +14,10 @@ import (
 	"github.com/dkoosis/lintkit/pkg/sarif"
 )
 
-// Thresholds for file size warnings
+// Thresholds for file size buckets
 const (
-	ThresholdWarning = 500  // LOC for warning
-	ThresholdError   = 750  // LOC for error
-	ThresholdCrit    = 1000 // LOC for critical
+	ThresholdYellow = 500  // LOC for yellow (warning)
+	ThresholdRed    = 1000 // LOC for red (error)
 )
 
 type fileInfo struct {
@@ -27,7 +27,6 @@ type fileInfo struct {
 
 func main() {
 	dir := flag.String("dir", ".", "directory to analyze")
-	topN := flag.Int("top", 10, "number of largest files to report")
 	flag.Parse()
 
 	files, err := analyzeDir(*dir)
@@ -36,8 +35,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	log := buildSARIF(files, *topN)
-	enc := sarif.NewEncoder(os.Stdout)
+	log := buildSARIF(files)
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
 	if err := enc.Encode(log); err != nil {
 		fmt.Fprintf(os.Stderr, "error encoding SARIF: %v\n", err)
 		os.Exit(1)
@@ -52,10 +53,10 @@ func analyzeDir(root string) ([]fileInfo, error) {
 			return err
 		}
 
-		// Skip hidden directories and vendor
+		// Skip hidden directories and vendor (but not the root ".")
 		if d.IsDir() {
 			name := d.Name()
-			if strings.HasPrefix(name, ".") || name == "vendor" || name == "node_modules" {
+			if name != "." && (strings.HasPrefix(name, ".") || name == "vendor" || name == "node_modules") {
 				return filepath.SkipDir
 			}
 			return nil
@@ -105,96 +106,41 @@ func countLines(path string) (int, error) {
 	return count, scanner.Err()
 }
 
-func buildSARIF(files []fileInfo, topN int) *sarif.Log {
+func buildSARIF(files []fileInfo) *sarif.Log {
 	log := sarif.NewLog()
-
 	run := sarif.Run{
-		Tool: sarif.Tool{
-			Driver: sarif.Driver{
-				Name:    "filesize",
-				Version: "0.1.0",
-			},
-		},
-		Results: []sarif.Result{},
+		Tool: sarif.Tool{Driver: sarif.Driver{Name: "lintkit-filesize"}},
 	}
 
-	// Report top N largest files
-	count := topN
-	if count > len(files) {
-		count = len(files)
-	}
+	for _, f := range files {
+		var level string
+		var ruleID string
 
-	for i := 0; i < count; i++ {
-		f := files[i]
-		level, ruleID := classifyFile(f.lines)
+		switch {
+		case f.lines >= ThresholdRed:
+			level = "error"
+			ruleID = "filesize-red"
+		case f.lines >= ThresholdYellow:
+			level = "warning"
+			ruleID = "filesize-yellow"
+		default:
+			continue // Green files don't get reported
+		}
 
-		result := sarif.Result{
+		run.Results = append(run.Results, sarif.Result{
 			RuleID: ruleID,
 			Level:  level,
 			Message: sarif.Message{
-				Text: fmt.Sprintf("%s: %d lines", f.path, f.lines),
+				Text: fmt.Sprintf("%s has %d lines", filepath.ToSlash(f.path), f.lines),
 			},
-			Locations: []sarif.Location{
-				{
-					PhysicalLocation: sarif.PhysicalLocation{
-						ArtifactLocation: sarif.ArtifactLocation{
-							URI: f.path,
-						},
-					},
+			Locations: []sarif.Location{{
+				PhysicalLocation: sarif.PhysicalLocation{
+					ArtifactLocation: sarif.ArtifactLocation{URI: filepath.ToSlash(f.path)},
 				},
-			},
-		}
-		run.Results = append(run.Results, result)
+			}},
+		})
 	}
-
-	// Add summary stats
-	stats := computeStats(files)
-	run.Results = append(run.Results, sarif.Result{
-		RuleID: "filesize/summary",
-		Level:  "note",
-		Message: sarif.Message{
-			Text: fmt.Sprintf("total=%d over500=%d over750=%d over1000=%d",
-				stats.total, stats.over500, stats.over750, stats.over1000),
-		},
-	})
 
 	log.Runs = append(log.Runs, run)
 	return log
-}
-
-func classifyFile(lines int) (level, ruleID string) {
-	switch {
-	case lines >= ThresholdCrit:
-		return "error", "filesize/critical"
-	case lines >= ThresholdError:
-		return "error", "filesize/large"
-	case lines >= ThresholdWarning:
-		return "warning", "filesize/medium"
-	default:
-		return "note", "filesize/ok"
-	}
-}
-
-type stats struct {
-	total    int
-	over500  int
-	over750  int
-	over1000 int
-}
-
-func computeStats(files []fileInfo) stats {
-	var s stats
-	s.total = len(files)
-	for _, f := range files {
-		if f.lines >= 500 {
-			s.over500++
-		}
-		if f.lines >= 750 {
-			s.over750++
-		}
-		if f.lines >= 1000 {
-			s.over1000++
-		}
-	}
-	return s
 }
