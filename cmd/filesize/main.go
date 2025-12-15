@@ -286,13 +286,21 @@ func loadHistory(path string) []HistoryEntry {
 }
 
 func saveSnapshot(path string, metrics DashboardMetrics) {
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return
+	// Read existing snapshots
+	var snapshots []snapshot
+	if f, err := os.Open(path); err == nil {
+		decoder := json.NewDecoder(f)
+		for decoder.More() {
+			var s snapshot
+			if err := decoder.Decode(&s); err == nil {
+				snapshots = append(snapshots, s)
+			}
+		}
+		f.Close()
 	}
-	defer f.Close()
 
-	s := snapshot{
+	// Add current snapshot
+	snapshots = append(snapshots, snapshot{
 		Ts:        time.Now(),
 		Total:     metrics.Total,
 		Green:     metrics.Green,
@@ -301,10 +309,28 @@ func saveSnapshot(path string, metrics DashboardMetrics) {
 		TestFiles: metrics.TestFiles,
 		MDFiles:   metrics.MDFiles,
 		OrphanMD:  metrics.OrphanMD,
+	})
+
+	// Trim to last 35 days
+	cutoff := time.Now().AddDate(0, 0, -35)
+	var trimmed []snapshot
+	for _, s := range snapshots {
+		if s.Ts.After(cutoff) {
+			trimmed = append(trimmed, s)
+		}
 	}
 
+	// Rewrite file
+	f, err := os.Create(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
 	enc := json.NewEncoder(f)
-	enc.Encode(s) //nolint:errcheck // best effort
+	for _, s := range trimmed {
+		enc.Encode(s) //nolint:errcheck
+	}
 }
 
 // analysisResult holds all file analysis data.
