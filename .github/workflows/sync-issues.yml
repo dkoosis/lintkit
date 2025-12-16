@@ -1,0 +1,27 @@
+name: Sync Issues
+on:
+  issues:
+    types: [opened, edited, closed, deleted, labeled, unlabeled, assigned, unassigned]
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync issues to JSON
+        run: |
+          mkdir -p docs
+          gh issue list --state open --limit 500 \
+            --json number,title,body,labels,assignees,state,createdAt,updatedAt \
+            > docs/issues.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/issues.json
+          git diff --staged --quiet || (git commit -m "chore: sync issues.json" && git push)
