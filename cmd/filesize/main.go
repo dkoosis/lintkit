@@ -67,12 +67,20 @@ type HistoryEntry struct {
 	OrphanMD  int    `json:"orphan_md,omitempty"`
 }
 
+// excludePatterns holds MD path patterns to exclude from counts.
+var excludePatterns []string
+
 func main() {
 	dir := flag.String("dir", ".", "directory to analyze")
 	format := flag.String("format", "sarif", "output format: sarif, text, dashboard")
 	top := flag.Int("top", 0, "limit output to top N files (0=all)")
 	snapshotFile := flag.String("snapshots", "", "path to snapshots JSONL file for history (dashboard format only)")
+	excludeMD := flag.String("exclude-md", "", "comma-separated path patterns to exclude from MD counts (e.g., '**/templates/**,**/testdata/**')")
 	flag.Parse()
+
+	if *excludeMD != "" {
+		excludePatterns = strings.Split(*excludeMD, ",")
+	}
 
 	files, err := analyzeDir(*dir)
 	if err != nil {
@@ -367,9 +375,11 @@ func analyzeAll(root string) (*analysisResult, error) {
 			return nil
 		}
 
-		// Track markdown files
+		// Track markdown files (unless excluded)
 		if strings.HasSuffix(strings.ToLower(path), ".md") {
-			mdFiles = append(mdFiles, path)
+			if !isExcludedMD(path) {
+				mdFiles = append(mdFiles, path)
+			}
 			return nil
 		}
 
@@ -457,6 +467,44 @@ func findOrphanMD(mdFiles []string) int {
 	}
 
 	return orphans
+}
+
+// isExcludedMD checks if an MD file path matches any exclude pattern.
+func isExcludedMD(path string) bool {
+	for _, pattern := range excludePatterns {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		// Convert glob pattern to work with filepath.Match
+		// Handle ** patterns by checking if path contains the non-** parts
+		if strings.Contains(pattern, "**") {
+			// Split on ** and check if all parts are present in order
+			parts := strings.Split(pattern, "**")
+			remaining := path
+			matched := true
+			for _, part := range parts {
+				part = strings.Trim(part, "/")
+				if part == "" {
+					continue
+				}
+				idx := strings.Index(remaining, part)
+				if idx == -1 {
+					matched = false
+					break
+				}
+				remaining = remaining[idx+len(part):]
+			}
+			if matched {
+				return true
+			}
+		} else if matched, _ := filepath.Match(pattern, path); matched {
+			return true
+		} else if matched, _ := filepath.Match(pattern, filepath.Base(path)); matched {
+			return true
+		}
+	}
+	return false
 }
 
 func countLines(path string) (int, error) {
