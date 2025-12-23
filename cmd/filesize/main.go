@@ -30,6 +30,7 @@ type fileInfo struct {
 type DashboardOutput struct {
 	Timestamp time.Time        `json:"timestamp"`
 	Metrics   DashboardMetrics `json:"metrics"`
+	Deltas    DashboardDeltas  `json:"deltas"`
 	TopFiles  []DashboardFile  `json:"top_files"`
 	History   []HistoryEntry   `json:"history,omitempty"`
 }
@@ -46,6 +47,24 @@ type DashboardMetrics struct {
 	TestFiles   int `json:"test_files"`   // _test.go files
 	MDFiles     int `json:"md_files"`     // .md files
 	OrphanMD    int `json:"orphan_md"`    // MD files not linked from/to
+}
+
+// DashboardDeltas contains changes from historical snapshots.
+type DashboardDeltas struct {
+	Day   MetricDeltas `json:"day"`   // 1 day ago
+	Week  MetricDeltas `json:"week"`  // 1 week ago
+	Month MetricDeltas `json:"month"` // 1 month ago
+}
+
+// MetricDeltas holds delta values for each metric.
+type MetricDeltas struct {
+	Total     int `json:"total"`
+	Green     int `json:"green"`
+	Yellow    int `json:"yellow"`
+	Red       int `json:"red"`
+	TestFiles int `json:"test_files"`
+	MDFiles   int `json:"md_files"`
+	OrphanMD  int `json:"orphan_md"`
 }
 
 // DashboardFile represents a single file in the top N list.
@@ -211,15 +230,19 @@ func outputDashboard(dir string, top int, snapshotFile string) {
 		}
 	}
 
-	// Load history if snapshot file provided
+	// Load snapshots and calculate deltas
 	var history []HistoryEntry
+	var deltas DashboardDeltas
 	if snapshotFile != "" {
-		history = loadHistory(snapshotFile)
+		snapshots := loadSnapshots(snapshotFile)
+		history = buildHistory(snapshots)
+		deltas = calculateDeltas(snapshots, metrics)
 	}
 
 	output := DashboardOutput{
 		Timestamp: time.Now(),
 		Metrics:   metrics,
+		Deltas:    deltas,
 		TopFiles:  topFiles,
 		History:   history,
 	}
@@ -249,7 +272,65 @@ type snapshot struct {
 	OrphanMD  int       `json:"orphan_md,omitempty"`
 }
 
-func loadHistory(path string) []HistoryEntry {
+// calculateDeltas finds historical snapshots and computes deltas for 1 day, 1 week, 1 month ago.
+func calculateDeltas(snapshots []snapshot, current DashboardMetrics) DashboardDeltas {
+	now := time.Now()
+
+	// Find closest snapshot to each time period
+	dayAgo := findClosestSnapshot(snapshots, now.AddDate(0, 0, -1))
+	weekAgo := findClosestSnapshot(snapshots, now.AddDate(0, 0, -7))
+	monthAgo := findClosestSnapshot(snapshots, now.AddDate(0, -1, 0))
+
+	return DashboardDeltas{
+		Day:   computeMetricDeltas(current, dayAgo),
+		Week:  computeMetricDeltas(current, weekAgo),
+		Month: computeMetricDeltas(current, monthAgo),
+	}
+}
+
+// findClosestSnapshot finds the snapshot closest to the target time (within 36 hours).
+func findClosestSnapshot(snapshots []snapshot, target time.Time) *snapshot {
+	if len(snapshots) == 0 {
+		return nil
+	}
+
+	var closest *snapshot
+	minDiff := time.Duration(36 * time.Hour) // Max tolerance: 36 hours
+
+	for i := range snapshots {
+		s := &snapshots[i]
+		diff := s.Ts.Sub(target)
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff < minDiff {
+			minDiff = diff
+			closest = s
+		}
+	}
+
+	return closest
+}
+
+// computeMetricDeltas calculates the difference between current and previous metrics.
+func computeMetricDeltas(current DashboardMetrics, prev *snapshot) MetricDeltas {
+	if prev == nil {
+		return MetricDeltas{} // No historical data
+	}
+
+	return MetricDeltas{
+		Total:     current.Total - prev.Total,
+		Green:     current.Green - prev.Green,
+		Yellow:    current.Yellow - prev.Yellow,
+		Red:       current.Red - prev.Red,
+		TestFiles: current.TestFiles - prev.TestFiles,
+		MDFiles:   current.MDFiles - prev.MDFiles,
+		OrphanMD:  current.OrphanMD - prev.OrphanMD,
+	}
+}
+
+// loadSnapshots loads all snapshots from the JSONL file.
+func loadSnapshots(path string) []snapshot {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil
@@ -264,6 +345,14 @@ func loadHistory(path string) []HistoryEntry {
 			continue
 		}
 		snapshots = append(snapshots, s)
+	}
+	return snapshots
+}
+
+// buildHistory groups snapshots by week and returns the last 8 weeks.
+func buildHistory(snapshots []snapshot) []HistoryEntry {
+	if len(snapshots) == 0 {
+		return nil
 	}
 
 	// Group by week and get the last 8 weeks
