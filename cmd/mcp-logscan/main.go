@@ -1,10 +1,15 @@
-// Command mcp-errors scans Claude MCP logs for orca-related errors.
+// Command mcp-logscan scans MCP server logs for errors and warnings.
+//
+// Parses both JSON (Claude Desktop) and text (Claude Code) log formats,
+// filtering for ERROR/WARN level messages. Useful for debugging MCP servers.
 //
 // Usage:
 //
-//	mcp-errors                    # default table output
-//	mcp-errors -format=dashboard  # JSON for fo dashboard
-//	mcp-errors -days=7            # scan past N days (default: 1)
+//	mcp-logscan                    # default table output, last 3 days
+//	mcp-logscan -format=dashboard  # JSON for fo dashboard
+//	mcp-logscan -days=7            # scan past N days
+//
+// Scans: ~/Library/Logs/Claude/mcp-server-*.log
 package main
 
 import (
@@ -34,6 +39,7 @@ type ErrorSummary struct {
 	Level   string `json:"level"`
 	Message string `json:"message"`
 	Detail  string `json:"detail,omitempty"`
+	LogFile string `json:"log_file,omitempty"`
 }
 
 type Report struct {
@@ -46,7 +52,7 @@ type Report struct {
 
 func main() {
 	format := flag.String("format", "table", "output format: table, dashboard")
-	days := flag.Int("days", 1, "scan logs from past N days")
+	days := flag.Int("days", 3, "scan logs from past N days")
 	flag.Parse()
 
 	report := scanLogs(*days)
@@ -72,7 +78,7 @@ func scanLogs(days int) *Report {
 	cutoff := time.Now().UTC().AddDate(0, 0, -days)
 
 	for _, dir := range logDirs {
-		files, err := filepath.Glob(filepath.Join(dir, "mcp-server-orca*.log"))
+		files, err := filepath.Glob(filepath.Join(dir, "mcp-server-*.log"))
 		if err != nil {
 			continue
 		}
@@ -83,15 +89,16 @@ func scanLogs(days int) *Report {
 				continue
 			}
 
-			report.LogFiles = append(report.LogFiles, filepath.Base(file))
-			scanFile(file, report, cutoff)
+			baseName := filepath.Base(file)
+			report.LogFiles = append(report.LogFiles, baseName)
+			scanFile(file, baseName, report, cutoff)
 		}
 	}
 
 	return report
 }
 
-func scanFile(path string, report *Report, cutoff time.Time) {
+func scanFile(path, logFile string, report *Report, cutoff time.Time) {
 	f, err := os.Open(path) //nolint:gosec // G304: path from filepath.Walk
 	if err != nil {
 		return
@@ -144,6 +151,7 @@ func scanFile(path string, report *Report, cutoff time.Time) {
 					Level:   "ERROR",
 					Message: entry.Msg,
 					Detail:  firstNonEmpty(entry.Error, entry.Panic),
+				LogFile: logFile,
 				})
 			case "WARN":
 				report.WarnCount++
@@ -154,6 +162,7 @@ func scanFile(path string, report *Report, cutoff time.Time) {
 						Level:   "WARN",
 						Message: entry.Msg,
 						Detail:  entry.Panic,
+					LogFile: logFile,
 					})
 				}
 			}
@@ -170,6 +179,7 @@ func scanFile(path string, report *Report, cutoff time.Time) {
 					Time:    extractTimestamp(line),
 					Level:   "ERROR",
 					Message: msg,
+				LogFile: logFile,
 				})
 			} else if strings.Contains(line, "[warn]") {
 				report.WarnCount++
@@ -211,35 +221,68 @@ func outputDashboard(report *Report) {
 
 func outputTable(report *Report) {
 	if report.ErrorCount == 0 && report.WarnCount == 0 {
-		fmt.Println("MCP Logs: ✓ No errors")
+		fmt.Println("✓ No errors")
 		return
 	}
 
-	fmt.Printf("MCP Logs: %d errors, %d warnings\n", report.ErrorCount, report.WarnCount)
-	fmt.Println("═══════════════════════════════════════")
+	fmt.Printf("Recent Errors (%d errors, %d warnings)\n", report.ErrorCount, report.WarnCount)
 
-	if len(report.Errors) == 0 {
-		return
+	// Group errors by log file
+	byFile := make(map[string][]ErrorSummary)
+	for _, e := range report.Errors {
+		byFile[e.LogFile] = append(byFile[e.LogFile], e)
 	}
 
-	fmt.Println()
-	// Show most recent 10 errors
-	shown := 0
-	for i := len(report.Errors) - 1; i >= 0 && shown < 10; i-- {
-		e := report.Errors[i]
-		fmt.Printf("[%s] %s\n", e.Level, e.Message)
-		if e.Detail != "" {
-			// Truncate long details
-			detail := e.Detail
-			if len(detail) > 80 {
-				detail = detail[:77] + "..."
-			}
-			fmt.Printf("         %s\n", detail)
+	// Process each file
+	for _, logFile := range report.LogFiles {
+		errors := byFile[logFile]
+		if len(errors) == 0 {
+			continue
 		}
-		shown++
-	}
 
-	if len(report.Errors) > 10 {
-		fmt.Printf("\n... and %d more\n", len(report.Errors)-10)
+		fmt.Printf("\n    ~/Library/Logs/Claude/%s\n", logFile)
+
+		// Group by date within file
+		byDate := make(map[string][]ErrorSummary)
+		for _, e := range errors {
+			date := extractDate(e.Time)
+			byDate[date] = append(byDate[date], e)
+		}
+
+		// Get sorted dates (reverse chronological)
+		var dates []string
+		for date := range byDate {
+			dates = append(dates, date)
+		}
+		sortDatesDesc(dates)
+
+		// Print errors grouped by date
+		for _, date := range dates {
+			fmt.Printf("    %s\n", date)
+			for _, e := range byDate[date] {
+				fmt.Printf("    ✗ %s\n", e.Message)
+				if e.Detail != "" {
+					fmt.Printf("      %s\n", e.Detail)
+				}
+			}
+		}
+	}
+}
+
+func extractDate(timestamp string) string {
+	if len(timestamp) >= 10 {
+		return timestamp[:10]
+	}
+	return "unknown"
+}
+
+func sortDatesDesc(dates []string) {
+	// Simple bubble sort in descending order
+	for i := 0; i < len(dates); i++ {
+		for j := i + 1; j < len(dates); j++ {
+			if dates[i] < dates[j] {
+				dates[i], dates[j] = dates[j], dates[i]
+			}
+		}
 	}
 }
