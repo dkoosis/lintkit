@@ -70,7 +70,7 @@ func lintFile(path string) ([]sarif.Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var results []sarif.Result
 	reader := bufio.NewReader(f)

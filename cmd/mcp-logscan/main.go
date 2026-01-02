@@ -151,7 +151,7 @@ func scanFile(path, logFile string, report *Report, cutoff time.Time) {
 					Level:   "ERROR",
 					Message: entry.Msg,
 					Detail:  firstNonEmpty(entry.Error, entry.Panic),
-				LogFile: logFile,
+					LogFile: logFile,
 				})
 			case "WARN":
 				report.WarnCount++
@@ -162,7 +162,7 @@ func scanFile(path, logFile string, report *Report, cutoff time.Time) {
 						Level:   "WARN",
 						Message: entry.Msg,
 						Detail:  entry.Panic,
-					LogFile: logFile,
+						LogFile: logFile,
 					})
 				}
 			}
@@ -179,7 +179,7 @@ func scanFile(path, logFile string, report *Report, cutoff time.Time) {
 					Time:    extractTimestamp(line),
 					Level:   "ERROR",
 					Message: msg,
-				LogFile: logFile,
+					LogFile: logFile,
 				})
 			} else if strings.Contains(line, "[warn]") {
 				report.WarnCount++

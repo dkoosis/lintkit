@@ -1,3 +1,4 @@
+// Package dbsanity checks SQLite row counts against baselines and configs.
 package dbsanity
 
 import (

@@ -44,9 +44,9 @@ type DashboardMetrics struct {
 	Red    int `json:"red"`    // >= 1000 LOC
 
 	// Additional file counts
-	TestFiles   int `json:"test_files"`   // _test.go files
-	MDFiles     int `json:"md_files"`     // .md files
-	OrphanMD    int `json:"orphan_md"`    // MD files not linked from/to
+	TestFiles int `json:"test_files"` // _test.go files
+	MDFiles   int `json:"md_files"`   // .md files
+	OrphanMD  int `json:"orphan_md"`  // MD files not linked from/to
 }
 
 // DashboardDeltas contains changes from historical snapshots.
@@ -295,7 +295,7 @@ func findClosestSnapshot(snapshots []snapshot, target time.Time) *snapshot {
 	}
 
 	var closest *snapshot
-	minDiff := time.Duration(36 * time.Hour) // Max tolerance: 36 hours
+	minDiff := 36 * time.Hour // Max tolerance: 36 hours
 
 	for i := range snapshots {
 		s := &snapshots[i]
@@ -335,7 +335,7 @@ func loadSnapshots(path string) []snapshot {
 	if err != nil {
 		return nil
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var snapshots []snapshot
 	decoder := json.NewDecoder(f)
@@ -393,7 +393,7 @@ func saveSnapshot(path string, metrics DashboardMetrics) {
 				snapshots = append(snapshots, s)
 			}
 		}
-		f.Close()
+		_ = f.Close()
 	}
 
 	// Add current snapshot
@@ -422,11 +422,11 @@ func saveSnapshot(path string, metrics DashboardMetrics) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	enc := json.NewEncoder(f)
 	for _, s := range trimmed {
-		enc.Encode(s) //nolint:errcheck
+		_ = enc.Encode(s)
 	}
 }
 
@@ -601,7 +601,7 @@ func countLines(path string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	count := 0

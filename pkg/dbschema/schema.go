@@ -1,3 +1,4 @@
+// Package dbschema compares SQLite schemas against expected DDL files.
 package dbschema
 
 /*

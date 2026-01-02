@@ -1,3 +1,4 @@
+// Package docsprawl analyzes markdown sprawl and emits SARIF reports.
 package docsprawl
 
 import (
@@ -62,6 +63,7 @@ func Run(roots []string, cfg Config) (*Result, error) {
 // Command creates a flag set for the docsprawl CLI command.
 func Command() *flag.FlagSet {
 	fs := flag.NewFlagSet("docsprawl", flag.ExitOnError)
+	//nolint:errcheck // CLI usage output
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "Usage: lintkit docsprawl [--max-readme=N] [--max-files=N] ROOT...\n")
 	}
@@ -324,7 +326,7 @@ func tokenize(content string) []string {
 
 func hashStrings(parts []string) string {
 	h := sha1.New()
-	io.WriteString(h, strings.Join(parts, " "))
+	_, _ = io.WriteString(h, strings.Join(parts, " "))
 	return hex.EncodeToString(h.Sum(nil))
 }
 

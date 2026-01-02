@@ -1,3 +1,4 @@
+// Package nobackups detects backup and temporary files in the codebase.
 package nobackups
 
 import (

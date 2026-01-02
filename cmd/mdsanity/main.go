@@ -1,3 +1,4 @@
+// Command mdsanity validates markdown link integrity and reports broken links.
 package main
 
 import (

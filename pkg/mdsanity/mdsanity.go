@@ -1,3 +1,4 @@
+// Package mdsanity provides markdown link validation and sanity checks.
 package mdsanity
 
 import (
@@ -171,9 +172,7 @@ func extractLinks(absPath, relPath, root string) ([]string, error) {
 			continue
 		}
 
-		if strings.HasPrefix(target, "/") {
-			target = strings.TrimPrefix(target, "/")
-		}
+		target = strings.TrimPrefix(target, "/")
 
 		resolved := filepath.Clean(filepath.Join(filepath.Dir(filepath.Join(root, relPath)), target))
 		rel, err := filepath.Rel(root, resolved)

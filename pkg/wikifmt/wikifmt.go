@@ -1,3 +1,4 @@
+// Package wikifmt checks wiki-style markdown files for formatting issues.
 package wikifmt
 
 import (
@@ -312,10 +313,7 @@ func resolveMarkdownLink(currentPath, target string, index map[string]string) bo
 	if target == "" {
 		return false
 	}
-	cleaned := target
-	if strings.HasPrefix(cleaned, "/") {
-		cleaned = strings.TrimPrefix(cleaned, "/")
-	}
+	cleaned := strings.TrimPrefix(target, "/")
 	// resolve relative to current file directory
 	dir := filepath.Dir(currentPath)
 	abs := filepath.Clean(filepath.Join(dir, cleaned))

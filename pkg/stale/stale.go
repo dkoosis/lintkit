@@ -1,3 +1,4 @@
+// Package stale detects stale artifacts based on mtime rules.
 package stale
 
 import (

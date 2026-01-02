@@ -67,7 +67,7 @@ func TestLoadBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
-	defer tmp.Close()
+	defer func() { _ = tmp.Close() }()
 
 	baseline := Baseline{Tables: map[string]int64{"nugs": 100}}
 	if err := json.NewEncoder(tmp).Encode(baseline); err != nil {
@@ -91,7 +91,7 @@ func tempDB(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("failed to create temp db: %v", err)
 	}
-	tmp.Close()
+	_ = tmp.Close()
 	return tmp.Name()
 }
 

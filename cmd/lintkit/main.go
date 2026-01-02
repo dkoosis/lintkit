@@ -1,3 +1,4 @@
+// Command lintkit provides a unified CLI for running various code quality linters.
 package main
 
 import (
@@ -81,6 +82,7 @@ func main() {
 	}
 }
 
+//nolint:errcheck // CLI usage output - errors are intentionally ignored
 func usage() {
 	fmt.Fprintln(flag.CommandLine.Output(), "Usage: lintkit <command> [options]")
 	fmt.Fprintln(flag.CommandLine.Output(), "Commands:")
@@ -103,6 +105,7 @@ func runDbSanity(args []string) error {
 	historyPath := fs.String("history", "", "Path to history JSON file for WoW tracking")
 	updateHistory := fs.Bool("update", false, "Update history file with current results")
 
+	//nolint:errcheck // CLI usage output
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "Usage: lintkit dbsanity [--baseline counts.json | --config checks.yaml] DB...\n")
 		fmt.Fprintf(fs.Output(), "\nModes:\n")
@@ -397,6 +400,7 @@ func runJSONL(args []string) error {
 func runDbSchema(args []string) error {
 	fs := flag.NewFlagSet("dbschema", flag.ExitOnError)
 	expectedPath := fs.String("expected", "", "Path to expected schema DDL file")
+	//nolint:errcheck // CLI usage output
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "Usage: lintkit dbschema --expected schema.sql DB...\n")
 		fs.PrintDefaults()
@@ -419,7 +423,7 @@ func runDbSchema(args []string) error {
 	if err != nil {
 		return fmt.Errorf("open expected schema: %w", err)
 	}
-	defer expectedFile.Close()
+	defer func() { _ = expectedFile.Close() }()
 
 	expected, err := dbschema.ParseExpectedSchema(expectedFile)
 	if err != nil {

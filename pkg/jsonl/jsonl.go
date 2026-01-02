@@ -1,3 +1,4 @@
+// Package jsonl validates JSONL files against JSON Schema.
 package jsonl
 
 import (
@@ -32,7 +33,7 @@ func ValidateFile(path string, validator *Validator) ([]sarif.Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)

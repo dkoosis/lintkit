@@ -1,3 +1,4 @@
+// Package filesize checks file sizes against budget rules.
 package filesize
 
 import (
@@ -226,7 +227,7 @@ func countLines(path string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	reader := bufio.NewReader(f)
 	const bufSize = 64 * 1024

@@ -1,3 +1,4 @@
+// Package nuglint provides linting for ORCA knowledge nugget JSONL files.
 package nuglint
 
 // Nug represents the minimal structure of a nugget entry.

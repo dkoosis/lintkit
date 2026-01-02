@@ -19,7 +19,7 @@ func TestLoadRules(t *testing.T) {
 	if _, err := f.Write(content); err != nil {
 		t.Fatalf("write rules: %v", err)
 	}
-	f.Close()
+	_ = f.Close()
 
 	rules, err := LoadRules(f.Name())
 	if err != nil {
