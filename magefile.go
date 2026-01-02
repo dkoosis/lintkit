@@ -154,6 +154,16 @@ func runSequential(steps ...step) error {
 }
 
 func runFoDashboard(tasks ...string) error {
+	// Find fo binary - prefer local dev build, then PATH
+	foBin := os.Getenv("HOME") + "/Projects/fo/bin/fo"
+	if _, err := os.Stat(foBin); err != nil {
+		var lookupErr error
+		foBin, lookupErr = exec.LookPath("fo")
+		if lookupErr != nil {
+			return fmt.Errorf("fo binary not found at ~/Projects/fo/bin/fo or in PATH")
+		}
+	}
+
 	// Build task args
 	args := []string{"--dashboard"}
 	for _, t := range tasks {
@@ -161,7 +171,7 @@ func runFoDashboard(tasks ...string) error {
 	}
 
 	// Run dashboard with TTY attached
-	cmd := exec.Command("fo", args...)
+	cmd := exec.Command(foBin, args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
